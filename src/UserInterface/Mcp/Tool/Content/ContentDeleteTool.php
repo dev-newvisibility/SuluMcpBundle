@@ -18,6 +18,8 @@ use Mcp\Capability\Attribute\Schema;
 use Mcp\Exception\ToolCallException;
 use Mcp\Schema\ToolAnnotations;
 use Sulu\Component\Security\Authorization\PermissionTypes;
+use Sulu\Content\Domain\Model\ContentRichEntityInterface;
+use Sulu\Content\Domain\Model\DimensionContentInterface;
 use Sulu\Mcp\Application\Content\ContentTypeExtensionRegistry;
 use Sulu\Mcp\Application\Content\ContentTypeResolver;
 use Sulu\Mcp\Application\Content\ContentTypeSchemaExpander;
@@ -93,15 +95,19 @@ class ContentDeleteTool
             }
 
             $extension = $this->contentTypeResolver->get($resourceKey);
-            $security = $this->contentSecurityContextResolver->forEntity($resourceKey, $entity, $locale);
 
-            $this->permissionChecker->check(
-                $security->context,
-                [PermissionTypes::EDIT, PermissionTypes::DELETE],
-                $locale,
-                $security->aclObjectType,
-                null !== $security->aclObjectType ? $uuid : null,
-            );
+            // each locale of a snippet or article can sit in another template group, and the removal deletes all of them
+            foreach (self::contentLocales($entity, $locale) as $contentLocale) {
+                $security = $this->contentSecurityContextResolver->forEntity($resourceKey, $entity, $contentLocale);
+
+                $this->permissionChecker->check(
+                    $security->context,
+                    [PermissionTypes::EDIT, PermissionTypes::DELETE],
+                    $contentLocale,
+                    $security->aclObjectType,
+                    null !== $security->aclObjectType ? $uuid : null,
+                );
+            }
 
             if ($extension instanceof RemovalGuardInterface) {
                 $extension->assertCanRemove($uuid);
@@ -125,5 +131,22 @@ class ContentDeleteTool
                 'hint' => 'Verify the UUID and resourceKey are correct (use the matching get tool, e.g. sulu_page_get). For a page with children, set forceRemoveChildren=true.',
             ];
         }
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function contentLocales(object $entity, string $locale): array
+    {
+        $locales = [$locale];
+        if ($entity instanceof ContentRichEntityInterface) {
+            foreach ($entity->getDimensionContents() as $dimensionContent) {
+                if (null === $dimensionContent->getLocale() && DimensionContentInterface::STAGE_DRAFT === $dimensionContent->getStage()) {
+                    $locales = [...$locales, ...($dimensionContent->getAvailableLocales() ?? [])];
+                }
+            }
+        }
+
+        return \array_values(\array_unique($locales));
     }
 }
