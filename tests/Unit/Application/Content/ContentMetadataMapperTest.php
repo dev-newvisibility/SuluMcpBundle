@@ -20,7 +20,11 @@ use Prophecy\PhpUnit\ProphecyTrait;
 use Sulu\Bundle\AdminBundle\Metadata\FormMetadata\FieldMetadata;
 use Sulu\Bundle\AdminBundle\Metadata\FormMetadata\FormMetadata;
 use Sulu\Bundle\AdminBundle\Metadata\MetadataProviderInterface;
+use Sulu\Content\Domain\Model\ExcerptInterface;
+use Sulu\Content\Domain\Model\SeoInterface;
+use Sulu\Content\Domain\Model\TaxonomyInterface;
 use Sulu\Mcp\Application\Content\ContentMetadataMapper;
+use Sulu\Mcp\Application\Metadata\ExtensionFormKeys;
 use Sulu\Mcp\Tests\Unit\Fixture\ArrayMetadataProvider;
 
 #[CoversClass(ContentMetadataMapper::class)]
@@ -163,5 +167,66 @@ final class ContentMetadataMapperTest extends TestCase
         $this->assertArrayNotHasKey('error', $data);
         $this->assertSame(['title' => 'T'], $data['seo']);
         $this->assertTrue($data['seoNoIndex']);
+    }
+
+    public function testApplyExcerptAcceptsFieldsOfProjectExcerptForm(): void
+    {
+        // A project form tagged `sulu_content.content_excerpt_form` adds `excerpt/media`.
+        $provider = $this->providerWithProjectExcerptForms();
+        $mapper = new ContentMetadataMapper($provider, $this->formKeys());
+
+        $data = $mapper->applyExcerpt([], ['media' => ['ids' => [7]], 'excerptTags' => ['a']], 'en');
+
+        $this->assertArrayNotHasKey('error', $data);
+        $this->assertSame(['media' => ['ids' => [7]]], $data['excerpt']);
+        $this->assertSame(['a'], $data['excerptTags']);
+    }
+
+    public function testApplyExcerptStillRejectsUnknownFieldWithProjectExcerptForm(): void
+    {
+        $provider = $this->providerWithProjectExcerptForms();
+        $mapper = new ContentMetadataMapper($provider, $this->formKeys());
+
+        $data = $mapper->applyExcerpt([], ['bogusField' => 'x'], 'en');
+
+        $this->assertArrayHasKey('error', $data);
+        $this->assertStringContainsString('bogusField', $data['error']);
+        $this->assertStringContainsString('media', $data['hint']);
+        $this->assertSame(1, \substr_count($data['hint'], 'excerptCategories'));
+    }
+
+    public function testApplyExcerptRejectsProjectFieldWithoutFormRegistry(): void
+    {
+        // Without the registry only the core forms are read (previous behaviour).
+        $provider = $this->providerWithProjectExcerptForms();
+        $mapper = new ContentMetadataMapper($provider);
+
+        $data = $mapper->applyExcerpt([], ['media' => ['ids' => [7]]], 'en');
+
+        $this->assertArrayHasKey('error', $data);
+    }
+
+    private function providerWithProjectExcerptForms(): ArrayMetadataProvider
+    {
+        $provider = $this->provider();
+        \assert($provider instanceof ArrayMetadataProvider);
+        $provider->set('app_excerpt', $this->form(['excerpt/media' => 'media_selection']));
+        $provider->set('app_excerpt_taxonomies', $this->form(['excerptCategories' => 'category_selection']));
+
+        return $provider;
+    }
+
+    private function formKeys(): ExtensionFormKeys
+    {
+        return new ExtensionFormKeys(
+            [
+                'content_excerpt_metadata' => ['instanceOf' => ExcerptInterface::class, 'priority' => 100],
+                'app_excerpt' => ['instanceOf' => ExcerptInterface::class, 'priority' => 90],
+                'content_excerpt_taxonomies' => ['instanceOf' => TaxonomyInterface::class, 'priority' => 50],
+                // Repeats the taxonomy fields, like Sulu's page_excerpt_segments does.
+                'app_excerpt_taxonomies' => ['instanceOf' => TaxonomyInterface::class, 'priority' => 25],
+            ],
+            ['content_seo_metadata' => ['instanceOf' => SeoInterface::class, 'priority' => 100]],
+        );
     }
 }

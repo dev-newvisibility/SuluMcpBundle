@@ -19,7 +19,11 @@ use Prophecy\Argument;
 use Prophecy\PhpUnit\ProphecyTrait;
 use Sulu\Bundle\AdminBundle\Metadata\FormMetadata\FieldMetadata;
 use Sulu\Bundle\AdminBundle\Metadata\FormMetadata\FormMetadata;
+use Sulu\Content\Domain\Model\ExcerptInterface;
+use Sulu\Content\Domain\Model\SeoInterface;
+use Sulu\Content\Domain\Model\TaxonomyInterface;
 use Sulu\Mcp\Application\Metadata\ExtensionFieldsProvider;
+use Sulu\Mcp\Application\Metadata\ExtensionFormKeys;
 use Sulu\Mcp\Application\Metadata\MetadataLocaleResolver;
 use Sulu\Mcp\Tests\Unit\Fixture\ArrayMetadataProvider;
 use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorage;
@@ -73,6 +77,35 @@ final class ExtensionFieldsProviderTest extends TestCase
         $this->assertSame([
             ['name' => 'ogTitle', 'type' => 'text_line', 'label' => 'Og Title', 'required' => true],
         ], $result['seo']);
+    }
+
+    public function testIncludesFieldsOfProjectFormsOnce(): void
+    {
+        $provider = new ArrayMetadataProvider();
+        $provider->set('content_seo_metadata', $this->form(['seo/title' => 'text_line']));
+        $provider->set('content_excerpt_metadata', $this->form(['excerpt/image' => 'single_media_selection']));
+        // Project form: adds `excerpt/media` and redefines the core `excerpt/image`.
+        $provider->set('app_excerpt', $this->form(['excerpt/image' => 'media_selection', 'excerpt/media' => 'media_selection']));
+        $provider->set('content_excerpt_taxonomies', $this->form(['excerptCategories' => 'category_selection']));
+        $provider->setDefault($this->form([]));
+
+        $formKeys = new ExtensionFormKeys(
+            [
+                'content_excerpt_taxonomies' => ['instanceOf' => TaxonomyInterface::class, 'priority' => 50],
+                'content_excerpt_metadata' => ['instanceOf' => ExcerptInterface::class, 'priority' => 100],
+                'app_excerpt' => ['instanceOf' => ExcerptInterface::class, 'priority' => 90],
+            ],
+            ['content_seo_metadata' => ['instanceOf' => SeoInterface::class, 'priority' => 100]],
+        );
+
+        $resource = new ExtensionFieldsProvider($provider, new MetadataLocaleResolver(new TokenStorage(), 'en'), $formKeys);
+        $result = $resource->getExtensionFields();
+
+        $this->assertSame([
+            ['name' => 'image', 'type' => 'single_media_selection', 'label' => 'image', 'required' => false],
+            ['name' => 'media', 'type' => 'media_selection', 'label' => 'media', 'required' => false],
+            ['name' => 'excerptCategories', 'type' => 'category_selection', 'label' => 'excerptCategories', 'required' => false],
+        ], $result['excerpt']);
     }
 
     /**
