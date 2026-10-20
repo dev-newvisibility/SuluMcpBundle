@@ -19,23 +19,25 @@ namespace Sulu\Mcp\Application\Metadata;
  * Sulu collects every form tagged `sulu_content.content_excerpt_form` /
  * `sulu_content.content_seo_form` (core and project forms alike) into the
  * `sulu_content.content_excerpt_forms` / `sulu_content.content_seo_forms`
- * parameters. Reading them instead of hard-coding the core keys makes project
+ * parameters, already ordered by priority (highest first) by `ExcerptFormPass` /
+ * `SeoFormPass`. Reading them instead of hard-coding the core keys makes project
  * extensions (e.g. a custom `excerpt/media` field) available to the MCP tools.
+ *
+ * Every registered form counts for every resource type (pages, articles,
+ * snippets). The admin applies a form only when the content class matches its
+ * `instanceOf` (see `InstanceOfFormMetadataVisitor`); that filter is not applied here.
  *
  * @internal
  */
 final readonly class ExtensionFormKeys
 {
-    private const DEFAULT_SEO_FORM_KEYS = ['content_seo_metadata'];
-    private const DEFAULT_EXCERPT_FORM_KEYS = ['content_excerpt_metadata', 'content_excerpt_taxonomies'];
-
     /**
      * @param array<string, array{instanceOf: class-string, priority: int}> $excerptForms
      * @param array<string, array{instanceOf: class-string, priority: int}> $seoForms
      */
     public function __construct(
-        private array $excerptForms = [],
-        private array $seoForms = [],
+        private array $excerptForms,
+        private array $seoForms,
     ) {
     }
 
@@ -44,7 +46,7 @@ final readonly class ExtensionFormKeys
      */
     public function excerpt(): array
     {
-        return $this->keys($this->excerptForms, self::DEFAULT_EXCERPT_FORM_KEYS);
+        return \array_map(\strval(...), \array_keys($this->excerptForms));
     }
 
     /**
@@ -52,25 +54,6 @@ final readonly class ExtensionFormKeys
      */
     public function seo(): array
     {
-        return $this->keys($this->seoForms, self::DEFAULT_SEO_FORM_KEYS);
-    }
-
-    /**
-     * Highest priority first, matching the order Sulu merges the sub-forms in the admin.
-     *
-     * @param array<string, array{instanceOf: class-string, priority: int}> $forms
-     * @param list<string> $defaults
-     *
-     * @return list<string>
-     */
-    private function keys(array $forms, array $defaults): array
-    {
-        if ([] === $forms) {
-            return $defaults;
-        }
-
-        \uasort($forms, static fn (array $a, array $b): int => $b['priority'] <=> $a['priority']);
-
-        return \array_map(\strval(...), \array_keys($forms));
+        return \array_map(\strval(...), \array_keys($this->seoForms));
     }
 }

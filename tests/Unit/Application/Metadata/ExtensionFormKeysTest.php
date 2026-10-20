@@ -23,25 +23,18 @@ use Sulu\Mcp\Application\Metadata\ExtensionFormKeys;
 #[CoversClass(ExtensionFormKeys::class)]
 final class ExtensionFormKeysTest extends TestCase
 {
-    public function testFallsBackToCoreFormsWithoutRegistry(): void
+    public function testReturnsRegisteredFormKeysInRegistryOrder(): void
     {
-        $formKeys = new ExtensionFormKeys();
-
-        $this->assertSame(['content_excerpt_metadata', 'content_excerpt_taxonomies'], $formKeys->excerpt());
-        $this->assertSame(['content_seo_metadata'], $formKeys->seo());
-    }
-
-    public function testOrdersRegisteredFormsByPriority(): void
-    {
+        // ExcerptFormPass / SeoFormPass already sort the registries by priority.
         $formKeys = new ExtensionFormKeys(
             [
-                'content_excerpt_taxonomies' => ['instanceOf' => TaxonomyInterface::class, 'priority' => 50],
-                'app_excerpt' => ['instanceOf' => ExcerptInterface::class, 'priority' => 75],
                 'content_excerpt_metadata' => ['instanceOf' => ExcerptInterface::class, 'priority' => 100],
+                'app_excerpt' => ['instanceOf' => ExcerptInterface::class, 'priority' => 75],
+                'content_excerpt_taxonomies' => ['instanceOf' => TaxonomyInterface::class, 'priority' => 50],
             ],
             [
-                'app_seo' => ['instanceOf' => SeoInterface::class, 'priority' => 10],
                 'content_seo_metadata' => ['instanceOf' => SeoInterface::class, 'priority' => 100],
+                'app_seo' => ['instanceOf' => SeoInterface::class, 'priority' => 10],
             ],
         );
 

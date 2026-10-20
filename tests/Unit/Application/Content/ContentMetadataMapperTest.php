@@ -26,6 +26,7 @@ use Sulu\Content\Domain\Model\TaxonomyInterface;
 use Sulu\Mcp\Application\Content\ContentMetadataMapper;
 use Sulu\Mcp\Application\Metadata\ExtensionFormKeys;
 use Sulu\Mcp\Tests\Unit\Fixture\ArrayMetadataProvider;
+use Sulu\Mcp\Tests\Unit\Fixture\CoreExtensionFormKeys;
 
 #[CoversClass(ContentMetadataMapper::class)]
 final class ContentMetadataMapperTest extends TestCase
@@ -82,7 +83,7 @@ final class ContentMetadataMapperTest extends TestCase
 
     public function testApplySeoNestsAndLiftsKnownFields(): void
     {
-        $mapper = new ContentMetadataMapper($this->provider());
+        $mapper = new ContentMetadataMapper($this->provider(), CoreExtensionFormKeys::create());
 
         $data = $mapper->applySeo([], ['title' => 'T', 'canonicalUrl' => 'https://x', 'seoNoIndex' => true], 'en');
 
@@ -96,7 +97,7 @@ final class ContentMetadataMapperTest extends TestCase
         $provider = new ArrayMetadataProvider();
         $provider->set('content_seo_metadata', $this->form(['seo/title' => 'text_line', 'seo/ogTitle' => 'text_line']));
         $provider->setDefault($this->form([]));
-        $mapper = new ContentMetadataMapper($provider);
+        $mapper = new ContentMetadataMapper($provider, CoreExtensionFormKeys::create());
 
         $data = $mapper->applySeo([], ['ogTitle' => 'Hello'], 'en');
 
@@ -105,7 +106,7 @@ final class ContentMetadataMapperTest extends TestCase
 
     public function testApplySeoRejectsUnknownField(): void
     {
-        $mapper = new ContentMetadataMapper($this->provider());
+        $mapper = new ContentMetadataMapper($this->provider(), CoreExtensionFormKeys::create());
 
         $data = $mapper->applySeo([], ['bogusField' => 'x'], 'en');
 
@@ -115,7 +116,7 @@ final class ContentMetadataMapperTest extends TestCase
 
     public function testApplyExcerptNestsMediaAndLiftsTaxonomies(): void
     {
-        $mapper = new ContentMetadataMapper($this->provider());
+        $mapper = new ContentMetadataMapper($this->provider(), CoreExtensionFormKeys::create());
 
         $data = $mapper->applyExcerpt([], [
             'title' => 'Teaser',
@@ -129,7 +130,7 @@ final class ContentMetadataMapperTest extends TestCase
 
     public function testNullInputsAreNoOps(): void
     {
-        $mapper = new ContentMetadataMapper($this->provider());
+        $mapper = new ContentMetadataMapper($this->provider(), CoreExtensionFormKeys::create());
         $this->assertSame(['x' => 1], $mapper->applySeo(['x' => 1], null, 'en'));
         $this->assertSame(['x' => 1], $mapper->applyExcerpt(['x' => 1], null, 'en'));
     }
@@ -149,7 +150,7 @@ final class ContentMetadataMapperTest extends TestCase
         $provider->set('content_seo_metadata', $seoForm->reveal());
         $provider->setDefault($this->form([]));
 
-        $mapper = new ContentMetadataMapper($provider);
+        $mapper = new ContentMetadataMapper($provider, CoreExtensionFormKeys::create());
 
         $data = $mapper->applySeo([], ['ogTitle' => 'Hello'], 'en');
 
@@ -160,7 +161,7 @@ final class ContentMetadataMapperTest extends TestCase
     public function testApplySeoPlacesTopLevelColumnWhenMetadataUnavailable(): void
     {
         $provider = new ArrayMetadataProvider();
-        $mapper = new ContentMetadataMapper($provider);
+        $mapper = new ContentMetadataMapper($provider, CoreExtensionFormKeys::create());
 
         $data = $mapper->applySeo([], ['title' => 'T', 'seoNoIndex' => true], 'en');
 
@@ -195,15 +196,30 @@ final class ContentMetadataMapperTest extends TestCase
         $this->assertSame(1, \substr_count($data['hint'], 'excerptCategories'));
     }
 
-    public function testApplyExcerptRejectsProjectFieldWithoutFormRegistry(): void
+    public function testApplyExcerptIgnoresFormsOutsideTheRegistry(): void
     {
-        // Without the registry only the core forms are read (previous behaviour).
+        // Only the forms registered as excerpt forms are read.
         $provider = $this->providerWithProjectExcerptForms();
-        $mapper = new ContentMetadataMapper($provider);
+        $mapper = new ContentMetadataMapper($provider, CoreExtensionFormKeys::create());
 
         $data = $mapper->applyExcerpt([], ['media' => ['ids' => [7]]], 'en');
 
         $this->assertArrayHasKey('error', $data);
+    }
+
+    public function testApplyExcerptRejectsFieldsStrippedOnRead(): void
+    {
+        // `excerptSegment` / `excerptAudienceTargetGroups` are registered by Sulu itself, but stripped
+        // from read responses, so they are not offered for write either.
+        $provider = $this->providerWithProjectExcerptForms();
+        $mapper = new ContentMetadataMapper($provider, $this->formKeys());
+
+        $data = $mapper->applyExcerpt([], ['excerptSegment' => 'x'], 'en');
+
+        $this->assertArrayHasKey('error', $data);
+        $this->assertStringContainsString('excerptSegment', $data['error']);
+        $this->assertStringNotContainsString('excerptSegment', $data['hint']);
+        $this->assertStringNotContainsString('excerptAudienceTargetGroups', $data['hint']);
     }
 
     private function providerWithProjectExcerptForms(): ArrayMetadataProvider
@@ -212,6 +228,8 @@ final class ContentMetadataMapperTest extends TestCase
         \assert($provider instanceof ArrayMetadataProvider);
         $provider->set('app_excerpt', $this->form(['excerpt/media' => 'media_selection']));
         $provider->set('app_excerpt_taxonomies', $this->form(['excerptCategories' => 'category_selection']));
+        $provider->set('page_excerpt_segments', $this->form(['excerptSegment' => 'segment_select']));
+        $provider->set('audience_targeting_excerpt', $this->form(['excerptAudienceTargetGroups' => 'target_group_selection']));
 
         return $provider;
     }
@@ -223,8 +241,10 @@ final class ContentMetadataMapperTest extends TestCase
                 'content_excerpt_metadata' => ['instanceOf' => ExcerptInterface::class, 'priority' => 100],
                 'app_excerpt' => ['instanceOf' => ExcerptInterface::class, 'priority' => 90],
                 'content_excerpt_taxonomies' => ['instanceOf' => TaxonomyInterface::class, 'priority' => 50],
-                // Repeats the taxonomy fields, like Sulu's page_excerpt_segments does.
-                'app_excerpt_taxonomies' => ['instanceOf' => TaxonomyInterface::class, 'priority' => 25],
+                // A project form repeating the taxonomy fields.
+                'app_excerpt_taxonomies' => ['instanceOf' => TaxonomyInterface::class, 'priority' => 40],
+                'page_excerpt_segments' => ['instanceOf' => TaxonomyInterface::class, 'priority' => 25],
+                'audience_targeting_excerpt' => ['instanceOf' => TaxonomyInterface::class, 'priority' => 10],
             ],
             ['content_seo_metadata' => ['instanceOf' => SeoInterface::class, 'priority' => 100]],
         );

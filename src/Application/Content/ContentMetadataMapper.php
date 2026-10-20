@@ -33,7 +33,7 @@ final readonly class ContentMetadataMapper
 
     public function __construct(
         private MetadataProviderInterface $formMetadataProvider,
-        private ExtensionFormKeys $formKeys = new ExtensionFormKeys(),
+        private ExtensionFormKeys $formKeys,
     ) {
     }
 
@@ -159,7 +159,8 @@ final readonly class ContentMetadataMapper
             }
         }
 
-        return \array_keys($names);
+        // Fields stripped on read are not offered for write either.
+        return \array_values(\array_diff(\array_keys($names), StrippedContentFields::NAMES));
     }
 
     /**

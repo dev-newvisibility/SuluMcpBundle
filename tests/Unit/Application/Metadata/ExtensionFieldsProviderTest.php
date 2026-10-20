@@ -26,6 +26,7 @@ use Sulu\Mcp\Application\Metadata\ExtensionFieldsProvider;
 use Sulu\Mcp\Application\Metadata\ExtensionFormKeys;
 use Sulu\Mcp\Application\Metadata\MetadataLocaleResolver;
 use Sulu\Mcp\Tests\Unit\Fixture\ArrayMetadataProvider;
+use Sulu\Mcp\Tests\Unit\Fixture\CoreExtensionFormKeys;
 use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorage;
 
 #[CoversClass(ExtensionFieldsProvider::class)]
@@ -41,7 +42,7 @@ final class ExtensionFieldsProviderTest extends TestCase
         $provider->set('content_excerpt_taxonomies', $this->form(['excerptCategories' => 'category_selection']));
         $provider->setDefault($this->form([]));
 
-        $resource = new ExtensionFieldsProvider($provider, new MetadataLocaleResolver(new TokenStorage(), 'en'));
+        $resource = new ExtensionFieldsProvider($provider, new MetadataLocaleResolver(new TokenStorage(), 'en'), CoreExtensionFormKeys::create());
         $result = $resource->getExtensionFields();
 
         $this->assertSame([
@@ -71,7 +72,7 @@ final class ExtensionFieldsProviderTest extends TestCase
         $provider->set('content_seo_metadata', $seoForm->reveal());
         $provider->setDefault($this->form([]));
 
-        $resource = new ExtensionFieldsProvider($provider, new MetadataLocaleResolver(new TokenStorage(), 'en'));
+        $resource = new ExtensionFieldsProvider($provider, new MetadataLocaleResolver(new TokenStorage(), 'en'), CoreExtensionFormKeys::create());
         $result = $resource->getExtensionFields();
 
         $this->assertSame([
@@ -79,7 +80,7 @@ final class ExtensionFieldsProviderTest extends TestCase
         ], $result['seo']);
     }
 
-    public function testIncludesFieldsOfProjectFormsOnce(): void
+    public function testIncludesFieldsOfProjectFormsOnceAndLastDefinitionWins(): void
     {
         $provider = new ArrayMetadataProvider();
         $provider->set('content_seo_metadata', $this->form(['seo/title' => 'text_line']));
@@ -89,11 +90,12 @@ final class ExtensionFieldsProviderTest extends TestCase
         $provider->set('content_excerpt_taxonomies', $this->form(['excerptCategories' => 'category_selection']));
         $provider->setDefault($this->form([]));
 
+        // Registry order (highest priority first), as ExcerptFormPass leaves it.
         $formKeys = new ExtensionFormKeys(
             [
-                'content_excerpt_taxonomies' => ['instanceOf' => TaxonomyInterface::class, 'priority' => 50],
                 'content_excerpt_metadata' => ['instanceOf' => ExcerptInterface::class, 'priority' => 100],
                 'app_excerpt' => ['instanceOf' => ExcerptInterface::class, 'priority' => 90],
+                'content_excerpt_taxonomies' => ['instanceOf' => TaxonomyInterface::class, 'priority' => 50],
             ],
             ['content_seo_metadata' => ['instanceOf' => SeoInterface::class, 'priority' => 100]],
         );
@@ -101,11 +103,35 @@ final class ExtensionFieldsProviderTest extends TestCase
         $resource = new ExtensionFieldsProvider($provider, new MetadataLocaleResolver(new TokenStorage(), 'en'), $formKeys);
         $result = $resource->getExtensionFields();
 
+        // Like the admin, the lower-priority form's definition of `excerpt/image` wins.
         $this->assertSame([
-            ['name' => 'image', 'type' => 'single_media_selection', 'label' => 'image', 'required' => false],
+            ['name' => 'image', 'type' => 'media_selection', 'label' => 'image', 'required' => false],
             ['name' => 'media', 'type' => 'media_selection', 'label' => 'media', 'required' => false],
             ['name' => 'excerptCategories', 'type' => 'category_selection', 'label' => 'excerptCategories', 'required' => false],
         ], $result['excerpt']);
+    }
+
+    public function testLeavesOutFieldsStrippedOnRead(): void
+    {
+        $provider = new ArrayMetadataProvider();
+        $provider->set('content_excerpt_metadata', $this->form(['excerpt/title' => 'text_line']));
+        $provider->set('page_excerpt_segments', $this->form(['excerptSegment' => 'segment_select']));
+        $provider->set('audience_targeting_excerpt', $this->form(['excerptAudienceTargetGroups' => 'target_group_selection']));
+        $provider->setDefault($this->form([]));
+
+        $formKeys = new ExtensionFormKeys(
+            [
+                'content_excerpt_metadata' => ['instanceOf' => ExcerptInterface::class, 'priority' => 100],
+                'page_excerpt_segments' => ['instanceOf' => TaxonomyInterface::class, 'priority' => 25],
+                'audience_targeting_excerpt' => ['instanceOf' => TaxonomyInterface::class, 'priority' => 10],
+            ],
+            ['content_seo_metadata' => ['instanceOf' => SeoInterface::class, 'priority' => 100]],
+        );
+
+        $resource = new ExtensionFieldsProvider($provider, new MetadataLocaleResolver(new TokenStorage(), 'en'), $formKeys);
+        $result = $resource->getExtensionFields();
+
+        $this->assertSame(['title'], \array_column($result['excerpt'], 'name'));
     }
 
     /**
