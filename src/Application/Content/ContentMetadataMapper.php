@@ -159,8 +159,7 @@ final readonly class ContentMetadataMapper
             }
         }
 
-        // Fields stripped on read are not offered for write either.
-        return \array_values(\array_diff(\array_keys($names), StrippedContentFields::NAMES));
+        return \array_keys($names);
     }
 
     /**

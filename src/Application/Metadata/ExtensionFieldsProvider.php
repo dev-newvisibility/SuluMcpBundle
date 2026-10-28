@@ -15,7 +15,6 @@ namespace Sulu\Mcp\Application\Metadata;
 
 use Sulu\Bundle\AdminBundle\Metadata\FormMetadata\FormMetadata;
 use Sulu\Bundle\AdminBundle\Metadata\MetadataProviderInterface;
-use Sulu\Mcp\Application\Content\StrippedContentFields;
 
 /**
  * Exposes the project's live `seo` and `excerpt` field definitions so AI clients
@@ -66,9 +65,6 @@ class ExtensionFieldsProvider
             }
             foreach ($metadata->getFlatFieldMetadata() as $item) {
                 $rawName = $item->getName();
-                if (\in_array($rawName, StrippedContentFields::NAMES, true)) {
-                    continue;
-                }
                 $name = \str_starts_with($rawName, $prefix) ? \substr($rawName, \strlen($prefix)) : $rawName;
                 // A form may redefine a field of a higher-priority one (e.g. excerpt/image): the last one
                 // wins, as in the admin, which merges the sub-forms in priority order.

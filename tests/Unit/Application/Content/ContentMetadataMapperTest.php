@@ -207,19 +207,18 @@ final class ContentMetadataMapperTest extends TestCase
         $this->assertArrayHasKey('error', $data);
     }
 
-    public function testApplyExcerptRejectsFieldsStrippedOnRead(): void
+    public function testApplyExcerptAcceptsSegmentAndTargetGroupFields(): void
     {
-        // `excerptSegment` / `excerptAudienceTargetGroups` are registered by Sulu itself, but stripped
-        // from read responses, so they are not offered for write either.
+        // Registered by Sulu itself (page_excerpt_segments / audience_targeting_excerpt) and returned
+        // by the read tools, so a client can read them back after writing them.
         $provider = $this->providerWithProjectExcerptForms();
         $mapper = new ContentMetadataMapper($provider, $this->formKeys());
 
-        $data = $mapper->applyExcerpt([], ['excerptSegment' => 'x'], 'en');
+        $data = $mapper->applyExcerpt([], ['excerptSegment' => 'summer', 'excerptAudienceTargetGroups' => [3]], 'en');
 
-        $this->assertArrayHasKey('error', $data);
-        $this->assertStringContainsString('excerptSegment', $data['error']);
-        $this->assertStringNotContainsString('excerptSegment', $data['hint']);
-        $this->assertStringNotContainsString('excerptAudienceTargetGroups', $data['hint']);
+        $this->assertArrayNotHasKey('error', $data);
+        $this->assertSame('summer', $data['excerptSegment']);
+        $this->assertSame([3], $data['excerptAudienceTargetGroups']);
     }
 
     private function providerWithProjectExcerptForms(): ArrayMetadataProvider

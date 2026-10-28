@@ -111,7 +111,7 @@ final class ExtensionFieldsProviderTest extends TestCase
         ], $result['excerpt']);
     }
 
-    public function testLeavesOutFieldsStrippedOnRead(): void
+    public function testListsSegmentAndTargetGroupFields(): void
     {
         $provider = new ArrayMetadataProvider();
         $provider->set('content_excerpt_metadata', $this->form(['excerpt/title' => 'text_line']));
@@ -131,7 +131,7 @@ final class ExtensionFieldsProviderTest extends TestCase
         $resource = new ExtensionFieldsProvider($provider, new MetadataLocaleResolver(new TokenStorage(), 'en'), $formKeys);
         $result = $resource->getExtensionFields();
 
-        $this->assertSame(['title'], \array_column($result['excerpt'], 'name'));
+        $this->assertSame(['title', 'excerptSegment', 'excerptAudienceTargetGroups'], \array_column($result['excerpt'], 'name'));
     }
 
     /**
